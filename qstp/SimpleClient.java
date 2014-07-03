@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package qstp;
 
 import java.io.BufferedReader;
@@ -16,32 +12,31 @@ import java.util.Scanner;
  * @author nhnt11
  */
 public class SimpleClient {
-
-    /**
-     * @param args the command line arguments
-     */
+    static String name;
+    static SimpleClientListener listener;
+    
     public static void main(String[] args) throws Exception {
         // TODO code application logic here
         Socket sock = new Socket("localhost", 8888);
-        SimpleClientListener listener = new SimpleClientListener(sock);
+        listener = new SimpleClientListener(sock);
         listener.start();
         System.out.println("Now receiving broadcasted messages from server.");
+        MessageQueue mq = new MessageQueue(sock);
         Scanner s = new Scanner(System.in);
-        OutputStreamWriter osw =
-                new OutputStreamWriter(
-                sock.getOutputStream());
+        System.out.print("Please enter your name: ");
+        name=s.nextLine();
+        System.out.println("Welcome, " + name + ". You may now send messages.");
         String line;
         //System.out.print("You: ");
         while (true) {
             line = s.nextLine();
-            osw.write(line + "\n");
-            osw.flush();
+            mq.addMessageToQueue(new Message(name, line));
             if(line.equals(":quit"))
                 break;
             System.out.print("You: ");
         }
         System.out.println("You have quit the chat program.");
-        listener.running=0;
+        listener.running=false;
         s.close();
     }
 }
@@ -49,7 +44,7 @@ public class SimpleClient {
 class SimpleClientListener extends Thread {
     
     private Socket mSocket;
-    int running;
+    boolean running;
     
     public SimpleClientListener(Socket s) throws Exception {
         super();
@@ -58,13 +53,13 @@ class SimpleClientListener extends Thread {
 
     @Override
     public void run() {
-        running=1;
+        running=true;
         try {
             BufferedReader br =
                     new BufferedReader(
                     new InputStreamReader(mSocket.getInputStream()));
             String line;
-            while ((line = br.readLine()) != null && (running == 1) ) {
+            while ((line = br.readLine()) != null && (running) ) {
                 System.out.print("\b\b\b\b\b     \b\b\b\b\b");
                 System.out.println(line);
                 System.out.print("You: ");

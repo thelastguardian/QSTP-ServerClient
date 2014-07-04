@@ -1,9 +1,7 @@
 package qstp;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+import java.io.ObjectInputStream;
 import java.net.Socket;
 import java.util.Scanner;
 
@@ -21,7 +19,7 @@ public class SimpleClient {
         listener = new SimpleClientListener(sock);
         listener.start();
         System.out.println("Now receiving broadcasted messages from server.");
-        MessageQueue mq = new MessageQueue(sock);
+        ClientMessageQueue cmq = new ClientMessageQueue(sock);
         Scanner s = new Scanner(System.in);
         System.out.print("Please enter your name: ");
         name=s.nextLine();
@@ -30,7 +28,7 @@ public class SimpleClient {
         //System.out.print("You: ");
         while (true) {
             line = s.nextLine();
-            mq.addMessageToQueue(new Message(name, line));
+            cmq.addMessageToQueue(new Message(name, line, "server"));
             if(line.equals(":quit"))
                 break;
             System.out.print("You: ");
@@ -55,19 +53,17 @@ class SimpleClientListener extends Thread {
     public void run() {
         running=true;
         try {
-            BufferedReader br =
-                    new BufferedReader(
-                    new InputStreamReader(mSocket.getInputStream()));
+            ObjectInputStream ois =
+                    new ObjectInputStream(mSocket.getInputStream());
             String line;
-            while ((line = br.readLine()) != null && (running) ) {
+            while ((line = ((Message)(ois.readObject())).messageText) != null && (running) ) {
                 System.out.print("\b\b\b\b\b     \b\b\b\b\b");
                 System.out.println(line);
                 System.out.print("You: ");
             }
             System.out.println("Listener stopped");
             mSocket.close();
-        } catch (IOException e) {
-            e.printStackTrace(System.out);
-        }
+        } catch (IOException e) { e.printStackTrace(System.out); }
+          catch (ClassNotFoundException e) { System.out.println("Error: " + e); }
     }
 }

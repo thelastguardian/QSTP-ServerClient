@@ -23,7 +23,7 @@ class ServerMessageQueue extends Thread {
         OutputStreamWriter osw =
                 new OutputStreamWriter(
                 outputSocket.getOutputStream());*/
-            while(SimpleClient.listener.running) {
+            while(SimpleServer.running) {
                 if(messages.size()>0) {
                     //send message
                     Message m=messages.take();

@@ -5,6 +5,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 
+import java.io.Serializable;
+
 /**
  *
  * @author nhnt11
@@ -15,7 +17,8 @@ public class SimpleServer {
     static ServerMessageQueue messageQueue;
     static boolean running;
     
-    public static void main(String args[]) throws Exception {
+    public static void main(String args[]) {
+        try{
         ServerSocket server = new ServerSocket(8888);
         listOfClients = new ArrayList<SimpleClientConnection>();
         running=true;
@@ -32,6 +35,7 @@ public class SimpleServer {
             listOfClients.add(newclient);
             sendMessageToClient(new Message("Server", "Welcome to the server. Your ID is: " + (currentId-1), newclient));
         }
+        }catch (Exception e) { e.printStackTrace(); }
     }
 /*public static void removeClientId(long Id) {
     listOfClients.removeElement(Id);
@@ -90,7 +94,7 @@ public static void processMessage(Message msg, SimpleClientConnection sender) {
 }
 }
 
-class SimpleClientConnection extends Thread {
+class SimpleClientConnection extends Thread implements Serializable {
     long mId;
     Socket mSocket;
     int running;

@@ -1,6 +1,6 @@
 package qstp;
 
-import java.io.ObjectOutputStream;
+import java.io.OutputStreamWriter;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.io.IOException;
 
@@ -19,24 +19,23 @@ class ServerMessageQueue extends Thread {
     public void run() {
         System.out.println("Server Message Queue started.");
         try{
-            /*
-        OutputStreamWriter osw =
-                new OutputStreamWriter(
-                outputSocket.getOutputStream());*/
             while(SimpleServer.running) {
                 if(messages.size()>0) {
                     //send message
+                    System.out.println("Number of pending messages: "+messages.size());
                     Message m=messages.take();
                     try{
-                        ObjectOutputStream oos = new ObjectOutputStream(m.destinationSCC.mSocket.getOutputStream());
-                        oos.writeObject(m);
-                        oos.flush();
-                    } catch (IOException err) { System.out.println("Message '"+m.messageText+"' could not be sent."); }
+                        OutputStreamWriter osw = new OutputStreamWriter(m.destinationSCC.mSocket.getOutputStream());
+                        osw.write(m.getString()+"\n");
+                        osw.flush();
+                        System.out.println("Message sent ("+m.getString()+").");
+                    } catch (IOException err) { System.out.println("Message '"+m.getString()+"' could not be sent. Error: "+err); }
                 }
             }
-        } catch (Exception err) { System.out.println("Error: " + err); }
+        } catch (InterruptedException err) { System.out.println("Error accessing message queue: " + err); }
     }
     public void addMessageToQueue(Message msg) {
+        //System.out.println("Adding message: "+msg.getString()+" to server message queue.");
         try{
             messages.put(msg);
         }catch (InterruptedException e) { System.out.println("Error: "+e); }

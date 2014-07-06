@@ -15,13 +15,11 @@ public class SimpleServer {
 
     static ArrayList<SimpleClientConnection> listOfClients;
     static ServerMessageQueue messageQueue;
-    static boolean running;
 
     public static void main(String args[]) {
         try {
             ServerSocket server = new ServerSocket(8888);
             listOfClients = new ArrayList<SimpleClientConnection>();
-            running = true;
             messageQueue = new ServerMessageQueue();
             messageQueue.start();
             long currentId = 0;
@@ -29,11 +27,11 @@ public class SimpleServer {
             do {
                 Socket s = server.accept();
                 System.out.println("New connection! ID: " + currentId);
-                sendToAll(new Message("Server", "New connection! ID: " + currentId + ". Say Hi!"));
+                sendToAll(new Message("MESSAGE", "Server", "New connection! ID: " + currentId + ". Say Hi!"));
                 SimpleClientConnection newclient = new SimpleClientConnection(currentId++, s);
                 newclient.start();
                 listOfClients.add(newclient);
-                sendMessageToClient(new Message("Server", "Welcome to the server. Your ID is: " + (currentId - 1), newclient));
+                sendMessageToClient(new Message("MESSAGE", "Server", "Welcome to the server. Your ID is: " + (currentId - 1), newclient));
                 System.out.println("Number of currently connected clients: " + listOfClients.size());
             } while (listOfClients.size() > 0);  //for successfully closing when no clients remain connected, need to run the acceptor in a different thread, perhaps use stop(). (to do)
         } catch (Exception e) {
@@ -42,26 +40,26 @@ public class SimpleServer {
         System.exit(0);
     }
 
-    public static void sendToAll(Message msg) { //requires only sender and messageText.
+    public static void sendToAll(Message msg) { //requires only mSender and mText.
         for (SimpleClientConnection client : SimpleServer.listOfClients) {
-            msg.destinationSCC = client;
+            msg.mDestinationSCC = client;
             SimpleServer.messageQueue.addMessageToQueue(msg);
         }
     }
 
-    public static void sendMessageToClient(Message msg) { //requires sender, messageText, and destSCC
+    public static void sendMessageToClient(Message msg) { //requires mSender, mText, and destSCC
         SimpleServer.messageQueue.addMessageToQueue(msg);
     }
 
     public static void removeClient(SimpleClientConnection cc) {
         SimpleServer.listOfClients.remove(cc);
-        SimpleServer.sendToAll(new Message("Server", "Client ID: " + cc.mId + " - connection terminated!"));
+        SimpleServer.sendToAll(new Message("MESSAGE", "Server", "Client ID: " + cc.mId + " - connection terminated!"));
     }
 
     public static void processMessage(Message msg, SimpleClientConnection sender) {
-        //process according to destination:
-        if (!(msg.destination.equals("server"))) {
-            //when list of clients complete, find destination.
+        //process according to mDestination:
+        if (!(msg.mDestination.equals("server"))) {
+            //when list of clients complete, find mDestination.
             /*
              SimpleClientConnection temp;
              for(int i=0; i<SimpleServer.listOfClients.size(); i++) {
@@ -69,19 +67,19 @@ public class SimpleServer {
              }
              */
         } else {
-            switch (msg.messageText) {
+            switch (msg.mText) {
                 case ":quit":
                     System.out.println("Server received quit request from client " + sender.mId + ".");
                     if (SimpleServer.listOfClients.size() > 1) {
-                        sendToAll(new Message("Server", msg.sender + " decided to quit the chatroom."));
+                        sendToAll(new Message("MESSAGE", "Server", msg.mSender + " decided to quit the chatroom."));
                     }
-                    sender.running = 0;
+                    sender.close();
                     break;
                 case ":list":
                     System.out.println("Server received request to list connected clients from client " + sender.mId + ".");
-                    sendMessageToClient(new Message("Server", "List of Clients:", sender));
+                    sendMessageToClient(new Message("MESSAGE", "Server", "List of Clients:", sender));
                     for (SimpleClientConnection client : SimpleServer.listOfClients) {
-                        sendMessageToClient(new Message("Server", client.mId + ": <Name unimplemented>", sender));
+                        sendMessageToClient(new Message("MESSAGE", "Server", client.mId + ": <Name unimplemented>", sender));
                     }
                     break;
                 default:
@@ -91,11 +89,11 @@ public class SimpleServer {
                             if (sender.mId == client.mId) {
                                 continue;
                             }
-                            msg.destinationSCC = client;
+                            msg.mDestinationSCC = client;
                             SimpleServer.messageQueue.addMessageToQueue(msg);
                         }
                     } else {
-                        System.out.println("Lonely guy (Name: " + msg.sender + ", ID: " + sender.mId + ") broadcasting to empty room: " + msg.messageText);
+                        System.out.println("Lonely guy (Name: " + msg.mSender + ", ID: " + sender.mId + ") broadcasting to empty room: " + msg.mText);
                     }
                     break;
             }
@@ -107,7 +105,6 @@ class SimpleClientConnection extends Thread {
 
     long mId;
     Socket mSocket;
-    int running;
 
     public SimpleClientConnection(long id, Socket s) throws Exception {
         super();
@@ -117,11 +114,10 @@ class SimpleClientConnection extends Thread {
 
     @Override
     public void run() {
-        running = 1;
         try {
             BufferedReader in = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
-            while (running == 1) {
-                String read = in.readLine();
+            String read;
+            while ((read = in.readLine()) != null) {
                 Message m = (new Message(read));
                 //System.out.println("Got message "+read);
                 SimpleServer.processMessage(m, this);
@@ -137,6 +133,14 @@ class SimpleClientConnection extends Thread {
             }
             System.out.println("Client ID " + mId + " connection listener terminated!");
             SimpleServer.removeClient(this);
+        }
+    }
+
+    public void close() {
+        try {
+            mSocket.close();
+        } catch (IOException e) {
+            System.out.println("Error: " + e);
         }
     }
 }

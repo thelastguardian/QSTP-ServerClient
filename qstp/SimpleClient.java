@@ -15,11 +15,12 @@ public class SimpleClient {
 
     static String name;
     static SimpleClientListener listener;
+    static boolean connectedToServer;
 
     public static void main(String[] args) throws Exception {
         Socket sock = new Socket("localhost", 8888);
         Scanner s = new Scanner(System.in);
-        System.out.print("Please enter your name: ");
+        System.out.print("Please enter your name (cannot contain '~'): ");
         name = s.nextLine();
         System.out.println("Welcome, " + name + ". You may now send messages.");
         listener = new SimpleClientListener(sock);
@@ -28,29 +29,29 @@ public class SimpleClient {
         OutputStreamWriter oos
                 = new OutputStreamWriter(sock.getOutputStream());
         //System.out.print("You: ");
-        while (listener.running && (line = s.nextLine()) != null) {
-            Message toSend = new Message(name, line, "server");
-            try {
-                oos.write(toSend.getString() + "\n");
-                oos.flush();
-            } catch (IOException err) {
-                System.out.println("Message '" + toSend.getString() + "' could not be sent. (Error: " + err + ")");
+        while ((line = s.nextLine()) != null) {
+            if (connectedToServer) {
+                Message toSend = new Message("MESSAGE", name, "server", line);
+                try {
+                    oos.write(toSend.getString() + "\n");
+                    oos.flush();
+                } catch (IOException err) {
+                    System.out.println("Message '" + toSend.getString() + "' could not be sent. (Error: " + err + ")");
+                }
+                if (line.equals(":quit")) {
+                    break;
+                }
+                System.out.print("You: ");
             }
-            if (line.equals(":quit")) {
-                break;
-            }
-            System.out.print("You: ");
         }
         s.close();
         System.out.println("You have quit the chat program.");
-        listener.running = false;
     }
 }
 
 class SimpleClientListener extends Thread {
 
     private Socket mSocket;
-    boolean running;
 
     public SimpleClientListener(Socket s) throws Exception {
         super();
@@ -59,18 +60,18 @@ class SimpleClientListener extends Thread {
 
     @Override
     public void run() {
-        running = true;
         System.out.print("Connecting to server... ");
         BufferedReader in;
         try {
             in = new BufferedReader(
                     new InputStreamReader(mSocket.getInputStream()));
             System.out.println("connected successfully. Now listening for messages.");
+            SimpleClient.connectedToServer = true;
             String read;
-            while ((read = in.readLine()) != null && running) {
+            while ((read = in.readLine()) != null) {
                 System.out.print("\b\b\b\b\b\b");
                 Message received = new Message(read);
-                System.out.println(received.sender + ": " + received.messageText);
+                System.out.println(received.mSender + ": " + received.mText);
                 System.out.print("You: ");
             }
         } catch (IOException e) {

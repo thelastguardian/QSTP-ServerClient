@@ -20,7 +20,7 @@ public class SimpleServer implements Runnable {
     HashMap<Long, SimpleClientConnection> mClients;
     ServerMessageQueue mMessageQueue;
 
-    public static void main() {
+    public static void main(String args[]) {
         (new Thread(new SimpleServer())).start();
     }
 
@@ -227,7 +227,7 @@ public class SimpleServer implements Runnable {
             } catch (IOException e) {
                 System.out.println("Error: " + e);
             }
-            clientQuit(this);
+            clientQuit(mId);
         }
     }
 }

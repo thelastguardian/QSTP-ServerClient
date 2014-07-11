@@ -7,6 +7,10 @@ import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.util.Scanner;
 import java.net.UnknownHostException;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -16,10 +20,26 @@ public class SimpleClient {
 
     String mName;
     Socket mSocket;
-    long mID;
+    long mId;
     boolean mIDreceived;
+    private final long mPingRate = 2 * 60 * 1000; // 2 minutes.
+    private final long mPingTimeout = 2 * 60 * 1000; // 2 minutes.
+    private Timer mPingTimer;
+    private TimerTask mPingTask = new TimerTask() {
+        @Override
+        public void run() {
+            sendMessage(new Message("PING", -1, mId, "PingFromServer"));
+            mPingTimer.schedule(mTimeoutTask, mPingTimeout);
+        }
+    };
+    private TimerTask mTimeoutTask = new TimerTask() {
+        @Override
+        public void run() {
+            quit();
+        }
+    };
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         SimpleClient client = new SimpleClient();
         client.start();
     }
@@ -37,21 +57,21 @@ public class SimpleClient {
                 System.out.println("Waiting for ID from sever.");
                 Thread.sleep(1000);
             }
-            System.out.println("Your ID is: " + mID);
+            System.out.println("Your ID is: " + mId);
             String line;
             OutputStreamWriter oos
                     = new OutputStreamWriter(mSocket.getOutputStream());
             //System.out.print("You: ");
             while ((line = s.nextLine()) != null) {
-                Message toSend = new Message("MESSAGE", mID, -1, line);
+                Message toSend = new Message("MESSAGE", mId, -1, line);
                 sendMessage(toSend);
                 if (line.equals(":quit")) {
                     break;
                 }
                 System.out.print("You: ");
             }
-            s.close();
             System.out.println("You have quit the chat program.");
+            quit();
         } catch (Exception e) {
             System.out.println("Error: " + e);
         }
@@ -67,11 +87,20 @@ public class SimpleClient {
         }
     }
 
+    public void quit() {
+        try {
+            mSocket.close();
+        } catch (IOException e) {
+            System.out.println("Error closing socket: " + e);
+        }
+
+    }
+
     class SimpleClientListener implements Runnable {
 
         private Socket mSocket;
 
-        public SimpleClientListener(Socket s) throws Exception {
+        public SimpleClientListener(Socket s) {
             super();
             mSocket = s;
         }
@@ -84,15 +113,21 @@ public class SimpleClient {
                 in = new BufferedReader(
                         new InputStreamReader(mSocket.getInputStream()));
                 System.out.println("connected successfully. Now listening for messages.");
+                mPingTimer = new Timer();
+                mPingTimer.schedule(mPingTask, mPingRate);
                 String read;
                 while ((read = in.readLine()) != null) {
                     Message rec = new Message(read);
                     switch (rec.mType) {
                         case "PING":
-                            sendPong(mSocket);
+                            sendPong();
+                            continue;
+                        case "PONG":
+                            mTimeoutTask.cancel();
+                            mPingTimer.schedule(mPingTask, mPingRate);
                             continue;
                         case "IDINFO":
-                            mID = Long.parseLong(rec.mText);
+                            mId = Long.parseLong(rec.mText);
                             mIDreceived = true;
                             continue;
                     }
@@ -105,23 +140,13 @@ public class SimpleClient {
                 //e.printStackTrace(System.out);
                 System.out.println("Server connection lost.");
             } finally {
-                try {
-                    mSocket.close();
-                } catch (IOException ioe) {
-                    System.out.println("Error closing socket: " + ioe);
-                }
+                quit();
                 System.out.println("Listener stopped. No longer receiving messages from server.");
             }
         }
 
-        public void sendPong(Socket socket) {
-            try {
-                OutputStreamWriter osw = new OutputStreamWriter(socket.getOutputStream());
-                osw.write((new Message("PONG", mID, -1, "PongFromClient")).getString());
-                osw.flush();
-            } catch (IOException e) {
-                System.out.println("Error: " + e);
-            }
+        public void sendPong() {
+            sendMessage(new Message("PONG", mId, -1, "PongFromClient"));
         }
     }
 }

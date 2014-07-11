@@ -9,29 +9,20 @@ import java.util.Scanner;
 public class Message {
 
     String mType;
-    String mSender;
-    String mDestination;
+    long mSenderID;
+    long mDestinationID;
     String mText;
-    SimpleClientConnection mDestinationSCC;
 
-    public Message(String type, String sender, String destination, String text) {
+    public Message(String type, long senderID, long destinationID, String text) {
         mType = type;
-        mSender = sender;
-        mDestination = destination;
+        mSenderID = senderID;
+        mDestinationID = destinationID;
         mText = text;
     }
 
-    public Message(String type, String sender, String text, SimpleClientConnection destinationSCC) {
+    public Message(String type, long senderID, String text) {
         mType = type;
-        mSender = sender;
-        mText = text;
-        mDestinationSCC = destinationSCC;
-        mDestination = "mID: " + destinationSCC.mId;
-    }
-
-    public Message(String type, String sender, String text) {
-        mType = type;
-        mSender = sender;
+        mSenderID = senderID;
         mText = text;
     }
 
@@ -39,13 +30,13 @@ public class Message {
         Scanner in = new Scanner(toParse);
         in.useDelimiter("~");
         mType = in.next();
-        mSender = in.next();
-        mDestination = in.next();
+        mSenderID = in.nextLong();
+        mDestinationID = in.nextLong();
         in.reset();
         mText = in.nextLine().substring(1);
     }
 
     public String getString() {
-        return (mType + "~" + mSender + "~" + mDestination + "~" + mText);
+        return (mType + "~" + mSenderID + "~" + mDestinationID + "~" + mText);
     }
 }

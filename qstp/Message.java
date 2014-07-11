@@ -20,12 +20,6 @@ public class Message {
         mText = text;
     }
 
-    public Message(String type, long senderID, String text) {
-        mType = type;
-        mSenderID = senderID;
-        mText = text;
-    }
-
     public Message(String toParse) {
         Scanner in = new Scanner(toParse);
         in.useDelimiter("~");

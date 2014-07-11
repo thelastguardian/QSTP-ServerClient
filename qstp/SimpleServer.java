@@ -31,12 +31,12 @@ public class SimpleServer implements Runnable {
             mClients = new HashMap<Long, SimpleClientConnection>();
             mMessageQueue = new ServerMessageQueue();
             mMessageQueue.start();
-            long currentId = 0;
+            long currentId = 1;
             System.out.println("Server listening for connections!");
             do {
                 Socket s = server.accept();
                 System.out.println("New connection! ID: " + currentId);
-                broadcast(new Message("MESSAGE", -1, "New connection! ID: " + currentId + ". Say Hi!"), -1);
+                broadcast(new Message("MESSAGE", -1, 0, "New connection! ID: " + currentId + ". Say Hi!"));
                 SimpleClientConnection newclient = new SimpleClientConnection(currentId, s);
                 newclient.start();
                 mClients.put(currentId, newclient);
@@ -51,12 +51,12 @@ public class SimpleServer implements Runnable {
         System.exit(0);
     }
 
-    public void broadcast(Message msg, long fromID) { //requires only mSenderID and mText.
+    public void broadcast(Message msg) { //requires only mSenderID and mText.
         for (SimpleClientConnection client : mClients.values()) {
-            if (client.getId() == fromID) {
+            if (client.getMId() == msg.mSenderID) {
                 continue;
             }
-            msg.mDestinationID = client.mId;
+            msg.mDestinationID=client.mId;
             mMessageQueue.addMessageToQueue(msg);
         }
     }
@@ -67,12 +67,15 @@ public class SimpleServer implements Runnable {
 
     public void clientQuit(long ID) {
         mClients.remove(ID);
-        broadcast(new Message("MESSAGE", -1, "Client ID: " + ID + " - connection terminated!"), -1);
+        broadcast(new Message("MESSAGE", -1, 0, "Client ID: " + ID + " - connection terminated!"));
     }
 
     public void processMessage(Message msg, SimpleClientConnection sender) {
         //process according to mDestinationID:
-        if (msg.mDestinationID >= 0) {
+        //-1: Server
+        //0: Broadcast.
+        //>0: Client-to-client.
+        if (msg.mDestinationID > 0) {
             sendMessageToClient(msg);
             //when list of clients complete, find mDestinationID (on client side)
             /*
@@ -86,7 +89,7 @@ public class SimpleServer implements Runnable {
                 case ":quit":
                     System.out.println("Server received quit request from client " + sender.mId + ".");
                     if (mClients.size() > 1) {
-                        broadcast(new Message("MESSAGE", -1, msg.mSenderID + " decided to quit the chatroom."), -1);
+                        broadcast(new Message("MESSAGE", -1, 0, msg.mSenderID + " decided to quit the chatroom."));
                     }
                     sender.quit();
                     break;
@@ -100,7 +103,7 @@ public class SimpleServer implements Runnable {
                 default:
                     System.out.println("Unrecognized keyword in message: " + msg.getString());
                     sendMessageToClient(new Message("MESSAGE", -1, sender.mId, "Unrecognized keyword in message: " + msg.mText));
-                    broadcast(msg, sender.mId);
+                    broadcast(msg);
                     break;
             }
         }
@@ -120,7 +123,6 @@ public class SimpleServer implements Runnable {
             while (true) {
                 try {
                     if (mMessages.size() > 0) {
-                        //send message
                         System.out.println("Number of pending messages: " + mMessages.size());
                         Message m = mMessages.take();
                         mClients.get(m.mDestinationID).sendMessage(m);
@@ -148,26 +150,23 @@ public class SimpleServer implements Runnable {
 
         private final long mPingRate = 2 * 60 * 1000; // 2 minutes.
         private final long mPingTimeout = 2 * 60 * 1000; // 2 minutes.
-        private Timer mPingTimer;
-        private TimerTask mPingTask;
-        private TimerTask mTimeoutTask;
-
-        public SimpleClientConnection(long id, Socket s) throws Exception {
-            super();
-            mPingTask = new TimerTask() {
+        private Timer mPingTimer = new Timer();
+        private TimerTask mPingTask = new TimerTask() {
                 @Override
                 public void run() {
                     sendMessage(new Message("PING", -1, mId, "PingFromServer"));
                     mPingTimer.schedule(mTimeoutTask, mPingTimeout);
                 }
             };
-            mTimeoutTask = new TimerTask() {
+        private TimerTask mTimeoutTask = new TimerTask() {
                 @Override
                 public void run() {
                     quit();
                 }
-            };
-            mPingTimer = new Timer();
+            };;
+
+        public SimpleClientConnection(long id, Socket s) {
+            super();
             mId = id;
             mSocket = s;
         }
@@ -200,7 +199,6 @@ public class SimpleServer implements Runnable {
             } finally {
                 quit();
                 System.out.println("Client ID " + mId + " connection listener terminated!");
-                clientQuit(this);
             }
         }
 
@@ -219,7 +217,7 @@ public class SimpleServer implements Runnable {
             sendMessage(new Message("PONG", -1, mId, "PONGFROMSERVER"));
         }
 
-        public long getId() {
+        public long getMId() {
             return mId;
         }
 

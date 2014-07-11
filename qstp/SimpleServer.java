@@ -3,144 +3,233 @@ package qstp;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.HashMap;
 
 /**
  *
  * @author Vinay
  */
-public class SimpleServer {
+public class SimpleServer implements Runnable {
 
-    static ArrayList<SimpleClientConnection> listOfClients;
-    static ServerMessageQueue messageQueue;
+    HashMap<Long, SimpleClientConnection> mClients;
+    ServerMessageQueue mMessageQueue;
 
-    public static void main(String args[]) {
+    public static void main() {
+        (new Thread(new SimpleServer())).start();
+    }
+
+    @Override
+    public void run() {
         try {
             ServerSocket server = new ServerSocket(8888);
-            listOfClients = new ArrayList<SimpleClientConnection>();
-            messageQueue = new ServerMessageQueue();
-            messageQueue.start();
+            mClients = new HashMap<Long, SimpleClientConnection>();
+            mMessageQueue = new ServerMessageQueue();
+            mMessageQueue.start();
             long currentId = 0;
             System.out.println("Server listening for connections!");
             do {
                 Socket s = server.accept();
                 System.out.println("New connection! ID: " + currentId);
-                sendToAll(new Message("MESSAGE", "Server", "New connection! ID: " + currentId + ". Say Hi!"));
-                SimpleClientConnection newclient = new SimpleClientConnection(currentId++, s);
+                broadcast(new Message("MESSAGE", -1, "New connection! ID: " + currentId + ". Say Hi!"), -1);
+                SimpleClientConnection newclient = new SimpleClientConnection(currentId, s);
                 newclient.start();
-                listOfClients.add(newclient);
-                sendMessageToClient(new Message("MESSAGE", "Server", "Welcome to the server. Your ID is: " + (currentId - 1), newclient));
-                System.out.println("Number of currently connected clients: " + listOfClients.size());
-            } while (listOfClients.size() > 0);  //for successfully closing when no clients remain connected, need to run the acceptor in a different thread, perhaps use stop(). (to do)
+                mClients.put(currentId, newclient);
+                sendMessageToClient(new Message("MESSAGE", -1, currentId, "Welcome to the server. Your ID is: " + (currentId)));
+                sendMessageToClient(new Message("IDINFO", -1, currentId, currentId + ""));
+                currentId++;
+                System.out.println("Number of currently connected clients: " + mClients.size());
+            } while (mClients.size() > 0);  //for successfully closing when no clients remain connected, need to run the acceptor in a different thread, perhaps use stop(). (to do)
         } catch (Exception e) {
             e.printStackTrace();
         }
         System.exit(0);
     }
 
-    public static void sendToAll(Message msg) { //requires only mSender and mText.
-        for (SimpleClientConnection client : SimpleServer.listOfClients) {
-            msg.mDestinationSCC = client;
-            SimpleServer.messageQueue.addMessageToQueue(msg);
+    public void broadcast(Message msg, long fromID) { //requires only mSenderID and mText.
+        for (SimpleClientConnection client : mClients.values()) {
+            if (client.getId() == fromID) {
+                continue;
+            }
+            msg.mDestinationID = client.mId;
+            mMessageQueue.addMessageToQueue(msg);
         }
     }
 
-    public static void sendMessageToClient(Message msg) { //requires mSender, mText, and destSCC
-        SimpleServer.messageQueue.addMessageToQueue(msg);
+    public void sendMessageToClient(Message msg) { //requires mSenderID, mText, and mDestinationID
+        mMessageQueue.addMessageToQueue(msg);
     }
 
-    public static void removeClient(SimpleClientConnection cc) {
-        SimpleServer.listOfClients.remove(cc);
-        SimpleServer.sendToAll(new Message("MESSAGE", "Server", "Client ID: " + cc.mId + " - connection terminated!"));
+    public void clientQuit(long ID) {
+        mClients.remove(ID);
+        broadcast(new Message("MESSAGE", -1, "Client ID: " + ID + " - connection terminated!"), -1);
     }
 
-    public static void processMessage(Message msg, SimpleClientConnection sender) {
-        //process according to mDestination:
-        if (!(msg.mDestination.equals("server"))) {
-            //when list of clients complete, find mDestination.
+    public void processMessage(Message msg, SimpleClientConnection sender) {
+        //process according to mDestinationID:
+        if (msg.mDestinationID >= 0) {
+            sendMessageToClient(msg);
+            //when list of clients complete, find mDestinationID (on client side)
             /*
              SimpleClientConnection temp;
-             for(int i=0; i<SimpleServer.listOfClients.size(); i++) {
-             if(SimpleServer.listOfClients.get(i).)
+             for(int i=0; i<SimpleServer.mClients.size(); i++) {
+             if(SimpleServer.mClients.get(i).)
              }
              */
         } else {
             switch (msg.mText) {
                 case ":quit":
                     System.out.println("Server received quit request from client " + sender.mId + ".");
-                    if (SimpleServer.listOfClients.size() > 1) {
-                        sendToAll(new Message("MESSAGE", "Server", msg.mSender + " decided to quit the chatroom."));
+                    if (mClients.size() > 1) {
+                        broadcast(new Message("MESSAGE", -1, msg.mSenderID + " decided to quit the chatroom."), -1);
                     }
-                    sender.close();
+                    sender.quit();
                     break;
                 case ":list":
                     System.out.println("Server received request to list connected clients from client " + sender.mId + ".");
-                    sendMessageToClient(new Message("MESSAGE", "Server", "List of Clients:", sender));
-                    for (SimpleClientConnection client : SimpleServer.listOfClients) {
-                        sendMessageToClient(new Message("MESSAGE", "Server", client.mId + ": <Name unimplemented>", sender));
+                    sendMessageToClient(new Message("MESSAGE", -1, sender.mId, "List of Clients:"));
+                    for (SimpleClientConnection client : mClients.values()) {
+                        sendMessageToClient(new Message("MESSAGE", -1, sender.mId, client.mId + ": <Name unimplemented>"));
                     }
                     break;
                 default:
-                    //Simple broadcast.
-                    if (listOfClients.size() > 1) {
-                        for (SimpleClientConnection client : SimpleServer.listOfClients) {
-                            if (sender.mId == client.mId) {
-                                continue;
-                            }
-                            msg.mDestinationSCC = client;
-                            SimpleServer.messageQueue.addMessageToQueue(msg);
-                        }
-                    } else {
-                        System.out.println("Lonely guy (Name: " + msg.mSender + ", ID: " + sender.mId + ") broadcasting to empty room: " + msg.mText);
-                    }
+                    System.out.println("Unrecognized keyword in message: " + msg.getString());
+                    sendMessageToClient(new Message("MESSAGE", -1, sender.mId, "Unrecognized keyword in message: " + msg.mText));
+                    broadcast(msg, sender.mId);
                     break;
             }
         }
     }
-}
 
-class SimpleClientConnection extends Thread {
+    class ServerMessageQueue extends Thread {
 
-    long mId;
-    Socket mSocket;
+        private LinkedBlockingQueue<Message> mMessages;
 
-    public SimpleClientConnection(long id, Socket s) throws Exception {
-        super();
-        mId = id;
-        mSocket = s;
-    }
+        public ServerMessageQueue() {
+            mMessages = new LinkedBlockingQueue<Message>();
+        }
 
-    @Override
-    public void run() {
-        try {
-            BufferedReader in = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
-            String read;
-            while ((read = in.readLine()) != null) {
-                Message m = (new Message(read));
-                //System.out.println("Got message "+read);
-                SimpleServer.processMessage(m, this);
+        @Override
+        public void run() {
+            System.out.println("Server Message Queue started.");
+            while (true) {
+                try {
+                    if (mMessages.size() > 0) {
+                        //send message
+                        System.out.println("Number of pending messages: " + mMessages.size());
+                        Message m = mMessages.take();
+                        mClients.get(m.mDestinationID).sendMessage(m);
+                    }
+                } catch (InterruptedException err) {
+                    System.out.println("Error accessing message queue: " + err);
+                }
             }
-        } catch (IOException e) {
-            //e.printStackTrace(System.out);
-            System.out.println("Client Disconnected (Error: " + e + ").");
-        } finally {
+        }
+
+        public void addMessageToQueue(Message msg) {
+            //System.out.println("Adding message: "+msg.getString()+" to server message queue.");
             try {
-                mSocket.close();
-            } catch (IOException e) {
-                System.out.println("Error closing socket: " + e);
+                mMessages.put(msg);
+            } catch (InterruptedException e) {
+                System.out.println("Error: " + e);
             }
-            System.out.println("Client ID " + mId + " connection listener terminated!");
-            SimpleServer.removeClient(this);
         }
     }
 
-    public void close() {
-        try {
-            mSocket.close();
-        } catch (IOException e) {
-            System.out.println("Error: " + e);
+    class SimpleClientConnection extends Thread {
+
+        long mId;
+        Socket mSocket;
+
+        private final long mPingRate = 2 * 60 * 1000; // 2 minutes.
+        private final long mPingTimeout = 2 * 60 * 1000; // 2 minutes.
+        private Timer mPingTimer;
+        private TimerTask mPingTask;
+        private TimerTask mTimeoutTask;
+
+        public SimpleClientConnection(long id, Socket s) throws Exception {
+            super();
+            mPingTask = new TimerTask() {
+                @Override
+                public void run() {
+                    sendMessage(new Message("PING", -1, mId, "PingFromServer"));
+                    mPingTimer.schedule(mTimeoutTask, mPingTimeout);
+                }
+            };
+            mTimeoutTask = new TimerTask() {
+                @Override
+                public void run() {
+                    quit();
+                }
+            };
+            mPingTimer = new Timer();
+            mId = id;
+            mSocket = s;
+        }
+
+        @Override
+        public void run() {
+            try {
+                BufferedReader in = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
+                String read;
+                mPingTimer.schedule(mPingTask, mPingRate);
+                while ((read = in.readLine()) != null) {
+                    Message m = (new Message(read));
+                    switch (m.mType) {
+                        case "PING":
+                            sendPong();
+                            break;
+                        case "PONG":
+                            mTimeoutTask.cancel();
+                            mPingTimer.schedule(mPingTask, mPingRate);
+                            break;
+                        default:
+                            //System.out.println("Got message "+read);
+                            processMessage(m, this);
+                            break;
+                    }
+                }
+            } catch (IOException e) {
+                //e.printStackTrace(System.out);
+                System.out.println("Client Disconnected (Error: " + e + ").");
+            } finally {
+                quit();
+                System.out.println("Client ID " + mId + " connection listener terminated!");
+                clientQuit(this);
+            }
+        }
+
+        public void sendMessage(Message m) {
+            try {
+                OutputStreamWriter osw = new OutputStreamWriter(mSocket.getOutputStream());
+                osw.write(m.getString() + "\n");
+                osw.flush();
+                System.out.println("Message sent (" + m.getString() + ").");
+            } catch (IOException err) {
+                System.out.println("Message '" + m.getString() + "' could not be sent. Error: " + err);
+            }
+        }
+
+        public void sendPong() {
+            sendMessage(new Message("PONG", -1, mId, "PONGFROMSERVER"));
+        }
+
+        public long getId() {
+            return mId;
+        }
+
+        public void quit() {
+            try {
+                mSocket.close();
+            } catch (IOException e) {
+                System.out.println("Error: " + e);
+            }
+            clientQuit(this);
         }
     }
 }

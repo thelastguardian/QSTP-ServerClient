@@ -22,22 +22,30 @@ public class SimpleClient {
     Socket mSocket;
     long mId;
     boolean mIDreceived;
-    private final long mPingRate = 2 * 60 * 1000; // 2 minutes.
-    private final long mPingTimeout = 2 * 60 * 1000; // 2 minutes.
+    private final long mPingRate = 10 * 1000; // 2 minutes.
+    private final long mPingTimeout = 10 * 1000; // 2 minutes.
     private Timer mPingTimer;
-    private TimerTask mPingTask = new TimerTask() {
-        @Override
-        public void run() {
-            sendMessage(new Message("PING", -1, mId, "PingFromServer"));
-            mPingTimer.schedule(mTimeoutTask, mPingTimeout);
+                TimerTask mPingTaskRef = mPingTask();
+                TimerTask mTimeoutTaskRef = mTimeoutTask();
+        private TimerTask mPingTask() {
+            return ( new TimerTask() {
+                @Override
+                public void run() {
+                    sendMessage(new Message("PING", -1, mId, "PingFromClient"));
+                    System.out.println("Ping sent. Scheduling quit task.");
+                    mTimeoutTaskRef = mTimeoutTask();
+                    mPingTimer.schedule(mTimeoutTaskRef, mPingTimeout);
+                }
+            });
         }
-    };
-    private TimerTask mTimeoutTask = new TimerTask() {
+    private TimerTask mTimeoutTask() {
+        return ( new TimerTask() {
         @Override
         public void run() {
+            System.out.println("Quitting server due to ping timeout.");
             quit();
         }
-    };
+    });}
 
     public static void main(String[] args) {
         SimpleClient client = new SimpleClient();
@@ -114,17 +122,20 @@ public class SimpleClient {
                         new InputStreamReader(mSocket.getInputStream()));
                 System.out.println("connected successfully. Now listening for messages.");
                 mPingTimer = new Timer();
-                mPingTimer.schedule(mPingTask, mPingRate);
+                mPingTimer.schedule(mPingTaskRef, mPingRate);
                 String read;
                 while ((read = in.readLine()) != null) {
                     Message rec = new Message(read);
                     switch (rec.mType) {
                         case "PING":
+                            System.out.println("Got ping. Sending pong.");
                             sendPong();
                             continue;
                         case "PONG":
-                            mTimeoutTask.cancel();
-                            mPingTimer.schedule(mPingTask, mPingRate);
+                            System.out.println("Got pong. Resetting timers.");
+                            mTimeoutTaskRef.cancel();
+                            mPingTaskRef = mPingTask();
+                            mPingTimer.schedule(mPingTaskRef, mPingRate);
                             continue;
                         case "IDINFO":
                             mId = Long.parseLong(rec.mText);

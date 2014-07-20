@@ -148,23 +148,31 @@ public class SimpleServer implements Runnable {
         long mId;
         Socket mSocket;
 
-        private final long mPingRate = 2 * 60 * 1000; // 2 minutes.
-        private final long mPingTimeout = 2 * 60 * 1000; // 2 minutes.
+        private final long mPingRate = 10 * 1000; // 2 minutes.
+        private final long mPingTimeout = 10 * 1000; // 2 minutes.
         private Timer mPingTimer = new Timer();
-        private TimerTask mPingTask = new TimerTask() {
+                TimerTask mPingTaskRef = mPingTask();
+                TimerTask mTimeoutTaskRef = mTimeoutTask();
+        private TimerTask mPingTask() {
+            return ( new TimerTask() {
                 @Override
                 public void run() {
                     sendMessage(new Message("PING", -1, mId, "PingFromServer"));
-                    mPingTimer.schedule(mTimeoutTask, mPingTimeout);
+                    System.out.println("Ping sent. Scheduling quit task.");
+                    mTimeoutTaskRef = mTimeoutTask();
+                    mPingTimer.schedule(mTimeoutTaskRef, mPingTimeout);
                 }
-            };
-        private TimerTask mTimeoutTask = new TimerTask() {
+            });
+        }
+        private TimerTask mTimeoutTask() {
+            return (new TimerTask() {
                 @Override
                 public void run() {
+                    System.out.println("Quitting client thread due to ping timeout.");
                     quit();
                 }
-            };;
-
+            });
+        }
         public SimpleClientConnection(long id, Socket s) {
             super();
             mId = id;
@@ -176,16 +184,19 @@ public class SimpleServer implements Runnable {
             try {
                 BufferedReader in = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
                 String read;
-                mPingTimer.schedule(mPingTask, mPingRate);
+                mPingTimer.schedule(mPingTaskRef, mPingRate);
                 while ((read = in.readLine()) != null) {
                     Message m = (new Message(read));
                     switch (m.mType) {
                         case "PING":
+                            System.out.println("Got ping. Sending pong.");
                             sendPong();
                             break;
                         case "PONG":
-                            mTimeoutTask.cancel();
-                            mPingTimer.schedule(mPingTask, mPingRate);
+                            System.out.println("Got pong. Resetting timers.");
+                            mTimeoutTaskRef.cancel();
+                            mPingTaskRef = mPingTask();
+                            mPingTimer.schedule(mPingTaskRef, mPingRate);
                             break;
                         default:
                             //System.out.println("Got message "+read);
